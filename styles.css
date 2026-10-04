@@ -272,7 +272,7 @@ input:focus, select:focus, textarea:focus {
 }
 .chart .dot.on { fill: var(--yellow); }
 .chart .cross { stroke: var(--ink); stroke-width: 1.5; stroke-dasharray: 4 3; }
-.chart .hit { fill: transparent; cursor: crosshair; }
+.chart .hit { fill: transparent; cursor: crosshair; touch-action: pan-y; }
 .tip {
   position: absolute; z-index: 5;
   pointer-events: none;
@@ -346,6 +346,7 @@ td .v { font-weight: 800; }
 .wk-table input { width: 96px; padding: 6px; text-align: center; }
 .wk-table td:first-child { white-space: normal; min-width: 130px; }
 .setno { font-size: 13px; color: var(--muted); }
+.addset-row { display: none; }
 .sets { line-height: 1.5; }
 
 /* ---------- DIET ---------- */
@@ -496,12 +497,77 @@ textarea { display: block; resize: vertical; min-height: 68px; }
   100% { opacity: 0; transform: scale(1.5) rotate(8deg); }
 }
 
+/* ---------- ĐIỆN THOẠI ---------- */
 @media (max-width: 560px) {
-  body { font-size: 16px; }
-  .tabs { gap: 8px; padding: 10px 6px; }
-  .tab { font-size: 15px; padding: 4px 8px; }
+  body { font-size: 16px; padding-bottom: calc(64px + env(safe-area-inset-bottom)); touch-action: manipulation; }
+  main { padding: 24px 10px 6px; }
   .compare { gap: 10px; }
-  .panel { padding: 28px 12px 16px; }
+  .panel { padding: 28px 12px 16px; margin-bottom: 30px; box-shadow: 4px 4px 0 var(--ink); }
+
+  /* phần đầu trang gọn lại để tới chỗ nhập liệu nhanh hơn */
+  .hero { padding: 14px 12px 16px; }
+  .title { font-size: 40px; -webkit-text-stroke-width: 2px; text-shadow: 3px 3px 0 var(--ink); }
+  .bubble { display: none; }
+  .profiles { margin-top: 12px; gap: 10px; }
+  .profile { font-size: 21px; padding: 3px 14px 3px 10px; }
+  .stats { grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
+  .stat { padding: 5px 8px; box-shadow: 3px 3px 0 var(--ink); }
+  .stat b { font-size: 25px; }
+  .stat span { font-size: 11px; }
+
+  /* thanh tab nằm cố định ở đáy, vừa tầm ngón cái */
+  .tabs {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0; z-index: 40;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
+    padding: 0 0 env(safe-area-inset-bottom);
+    border-top: 3px solid var(--ink);
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 7px 2px 6px;
+    font-size: 13px; letter-spacing: .6px; line-height: 1.1;
+    border: 0; border-right: 2px solid var(--ink); outline: 0;
+  }
+  .tab:last-child { border-right: 0; }
+  .tab:hover, .tab.active { transform: none; }
+  .tab .ti { font-size: 21px; line-height: 1; }
+  .tab .tx { display: none; }
+  .sync-pill { bottom: calc(72px + env(safe-area-inset-bottom)); }
+  /* đang gõ thì ẩn bớt để nhường chỗ cho bàn phím */
+  body:has(input:focus, textarea:focus) .tabs,
+  body:has(input:focus, textarea:focus) .sync-pill { display: none; }
+
+  /* ô nhập to, dễ bấm; chữ ≥16px để iPhone không tự phóng to khi chạm vào ô */
+  input[type="date"], input[type="number"], input[type="text"], input[type="email"], input[type="password"], select, textarea { min-height: 46px; font-size: 17px; }
+  .btn.primary { width: 100%; padding: 11px 16px; font-size: 24px; text-align: center; }
+  .inline-form .field { flex: 1 1 140px; max-width: none; }
+  .week-field { max-width: none; }
+  .chip { padding: 5px 14px; font-size: 15px; }
+  .chip.big { padding: 7px 16px; }
+  .icon-btn { width: 38px; height: 38px; font-size: 17px; }
+
+  /* log buổi tập: mỗi bài một thẻ, mỗi set một hàng ba ô kg / reps / RPE */
+  .wk-table, .wk-table tbody { display: block; }
+  .wk-table thead, .wk-table .ex-first .set-act .chip { display: none; }
+  .wk-table tbody tr, .wk-table tbody tr:hover { background: none; }
+  .wk-table tr { display: grid; grid-template-columns: 1fr 1fr 1fr 38px; gap: 3px 8px; align-items: end; margin-top: 10px; }
+  .wk-table td { display: block; min-width: 0; padding: 0; border: 0; text-align: left; }
+  .wk-table td.ex-name { grid-column: 1 / -1; }
+  .wk-table .ex-first { margin-top: 16px; padding-top: 14px; border-top: 3px solid var(--ink); }
+  .wk-table .ex-first:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .wk-table .ex-first .ex-name { font-family: var(--display); font-weight: 400; font-size: 23px; letter-spacing: 1px; white-space: normal; }
+  .wk-table .ex-first td[data-label]::before { content: attr(data-label); display: block; font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; }
+  .wk-table input { width: 100%; padding: 6px 4px; font-size: 18px; }
+  .wk-table .addset-row { display: block; }
+  .wk-table .addset-row .chip { width: 100%; padding: 8px; border-style: dashed; }
+
+  /* bảng số liệu: cột đầu đứng yên khi vuốt ngang */
+  th, td { padding: 6px 8px; font-size: 14px; }
+  th { white-space: normal; }
+  tbody tr { background: #fff; }
+  table:not(.wk-table) td:first-child, table:not(.wk-table) th:first-child { position: sticky; left: 0; z-index: 1; }
+  table:not(.wk-table) th:first-child { z-index: 2; }
+  table:not(.wk-table) td:first-child { background: inherit; white-space: normal; min-width: 92px; max-width: 112px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

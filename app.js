@@ -231,7 +231,7 @@ function drawChart(host, pts, unit, digits = 1) {
   host.innerHTML = svg + '<div class="tip" hidden></div>';
 
   const tip = $('.tip', host), cross = $('.cross', host), hov = $('.hover-dot', host), hit = $('.hit', host);
-  hit.addEventListener('pointermove', (e) => {
+  const showTip = (e) => {
     const px = ((e.clientX - host.getBoundingClientRect().left) / host.clientWidth) * W;
     let i = 0;
     xy.forEach(([x], j) => { if (Math.abs(x - px) < Math.abs(xy[i][0] - px)) i = j; });
@@ -244,8 +244,11 @@ function drawChart(host, pts, unit, digits = 1) {
     const half = tip.offsetWidth / 2;
     tip.style.left = `${Math.max(half, Math.min(host.clientWidth - half, x))}px`;
     tip.style.top = `${Math.max(y, tip.offsetHeight + 4)}px`;
-  });
-  hit.addEventListener('pointerleave', () => {
+  };
+  hit.addEventListener('pointermove', showTip);
+  hit.addEventListener('pointerdown', showTip);
+  hit.addEventListener('pointerleave', (e) => {
+    if (e.pointerType === 'touch') return; // trên điện thoại giữ lại để kịp đọc
     tip.hidden = true;
     cross.setAttribute('visibility', 'hidden');
     hov.setAttribute('visibility', 'hidden');
@@ -427,17 +430,19 @@ function renderLogRows(prog, day) {
   }
   const date = $('#wkDate').value || today();
   const prev = dayLogs(prog, day).filter((l) => l.date < date).pop();
-  const cell = (x, i, f, s, p, attrs) => `<td><input type="number" data-ex="${x.id}" data-set="${i}" data-f="${f}" ${attrs}
+  const LABELS = { w: 'kg', reps: 'reps', rpe: 'RPE' };
+  const cell = (x, i, f, s, p, attrs) => `<td data-label="${LABELS[f]}"><input type="number" data-ex="${x.id}" data-set="${i}" data-f="${f}" ${attrs}
     value="${s[f] ?? ''}" placeholder="${p[f] ?? '—'}"></td>`;
+  // trên điện thoại mỗi bài thành một thẻ: dòng .addset-row thay cho nút "＋ set" ở cột cuối
   const rows = day.exercises.map((x) => logDraft[x.id].map((s, i) => {
     const p = (prev && prev.entries[x.id] && prev.entries[x.id][i]) || {};
-    return `<tr><td>${i ? `<span class="setno">↳ set ${i + 1}</span>` : esc(x.name)}</td>
+    return `<tr${i ? '' : ' class="ex-first"'}><td class="ex-name">${i ? `<span class="setno">↳ set ${i + 1}</span>` : esc(x.name)}</td>
       ${cell(x, i, 'w', s, p, 'step="0.001" min="0" max="1000" inputmode="decimal"')}
       ${cell(x, i, 'reps', s, p, 'step="1" min="0" max="999" inputmode="numeric"')}
       ${cell(x, i, 'rpe', s, p, 'step="0.5" min="1" max="10" inputmode="decimal"')}
-      <td>${i ? `<button type="button" class="icon-btn" data-rmset="${x.id}|${i}" title="Bỏ set này">✕</button>`
+      <td class="set-act">${i ? `<button type="button" class="icon-btn" data-rmset="${x.id}|${i}" title="Bỏ set này">✕</button>`
     : `<button type="button" class="chip" data-addset="${x.id}">＋ set</button>`}</td></tr>`;
-  }).join('')).join('');
+  }).join('') + `<tr class="addset-row"><td colspan="5"><button type="button" class="chip" data-addset="${x.id}">＋ Thêm set</button></td></tr>`).join('');
   $('#wkRows').innerHTML = `<table class="wk-table"><thead><tr><th>Tên bài</th><th>Số tạ (kg)</th><th>Reps</th><th>RPE</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }

@@ -180,7 +180,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 26px 16px 10px; }
 .panel-head { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 
 /* ---------- FORMS ---------- */
-.field { display: flex; flex-direction: column; gap: 3px; font-weight: 700; }
+.field { display: flex; flex-direction: column; gap: 3px; min-width: 0; font-weight: 700; }
 .field > span { font-size: 14px; text-transform: uppercase; color: var(--muted); }
 .hint { font-style: normal; font-size: 14px; color: var(--muted); }
 input[type="date"], input[type="number"], input[type="text"], input[type="email"], input[type="password"], select, textarea {
@@ -194,6 +194,9 @@ input[type="date"], input[type="number"], input[type="text"], input[type="email"
   border-radius: 0;
   transition: box-shadow .15s, transform .15s, background .15s;
 }
+/* iPhone vẽ ô ngày theo kiểu riêng: rộng quá khung và canh giữa chữ. Bỏ kiểu đó để ô ngày giống các ô khác */
+input[type="date"] { display: block; -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; }
+input[type="date"]::-webkit-date-and-time-value { margin: 0; text-align: left; }
 input:focus, select:focus, textarea:focus {
   outline: none;
   background: #fff;
@@ -233,6 +236,7 @@ input:focus, select:focus, textarea:focus {
 .chips { display: flex; gap: 8px; }
 .chip {
   font: inherit; font-weight: 700; font-size: 14px;
+  color: var(--ink);
   padding: 2px 12px;
   background: #fff;
   border: 2px solid var(--ink);
@@ -312,6 +316,7 @@ td .v { font-weight: 800; }
 .delta.inline { display: inline; margin-left: 6px; }
 .icon-btn {
   font: inherit; font-size: 15px;
+  color: var(--ink);
   width: 30px; height: 30px;
   background: #fff;
   border: 2px solid var(--ink);
@@ -532,7 +537,11 @@ textarea { display: block; resize: vertical; min-height: 68px; }
   .tab:hover, .tab.active { transform: none; }
   .tab .ti { font-size: 21px; line-height: 1; }
   .tab .tx { display: none; }
-  .sync-pill { bottom: calc(72px + env(safe-area-inset-bottom)); }
+  /* nhãn đồng bộ thu lại thành một nút tròn để không che nội dung; chỉ bung chữ khi có lỗi */
+  .sync-pill { bottom: calc(72px + env(safe-area-inset-bottom)); width: 40px; height: 40px; padding: 0; font-size: 18px; }
+  .sync-pill .st { display: none; }
+  .sync-pill[data-kind="error"] { width: auto; padding: 0 14px; font-size: 14px; }
+  .sync-pill[data-kind="error"] .st { display: inline; }
   /* đang gõ thì ẩn bớt để nhường chỗ cho bàn phím */
   body:has(input:focus, textarea:focus) .tabs,
   body:has(input:focus, textarea:focus) .sync-pill { display: none; }

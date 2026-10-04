@@ -254,9 +254,11 @@ function softRender() {
 function setSyncStatus(kind) {
   const pill = $('#syncPill');
   pill.dataset.kind = kind;
-  pill.textContent = kind === 'busy' ? '⏳ Đang đồng bộ…'
-    : kind === 'ok' ? `☁️ Đã đồng bộ ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
-      : '⚠️ Chưa đồng bộ được';
+  const [icon, text] = kind === 'busy' ? ['⏳', 'Đang đồng bộ…']
+    : kind === 'ok' ? ['☁️', `Đã đồng bộ ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`]
+      : ['⚠️', 'Chưa đồng bộ được'];
+  pill.innerHTML = `<span>${icon}</span> <span class="st">${text}</span>`;
+  $('#syncText').textContent = `${icon} ${text}`;
 }
 function showAuth(message) {
   $('#auth').hidden = false;

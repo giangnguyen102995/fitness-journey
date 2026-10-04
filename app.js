@@ -643,6 +643,41 @@ const curDiet = () => ((state.diet ||= {})[pid()] ||= {});
 // bữa lưu trước khi có đơn vị chỉ có số gram ở trường g
 const itemQty = (it) => it.qty ?? it.g;
 const itemUnit = (it) => it.unit || 'g';
+const otherProfile = () => state.profiles.find((p) => p.id !== pid());
+let copySrc = null;    // { date, meal } đang copy sang hồ sơ kia
+// copy một bữa sang hồ sơ kia: mở hộp chỉnh lượng trước khi lưu, vì hai người thường ăn cùng món nhưng khác lượng
+function openCopyDialog(date, meal) {
+  const other = otherProfile();
+  copySrc = { date, meal };
+  $('#copyForm').innerHTML = `
+    <h2>Copy sang ${esc(other.name)}</h2>
+    <p class="sub"><b>${esc(meal.name)}</b> · ${fmtFull(date)}<br>Chỉnh lại lượng ${esc(other.name)} ăn. Món nào không ăn thì để 0.</p>
+    <div class="copy-list">${meal.items.map((it, i) => `
+      <label class="copy-row"><span>${esc(it.name)}</span>
+        <input type="number" data-i="${i}" step="0.1" min="0" max="10000" inputmode="decimal" value="${itemQty(it)}">
+        <b>${esc(itemUnit(it))}</b></label>`).join('')}</div>
+    <div class="btn-row">
+      <button class="btn primary" type="submit">Lưu cho ${esc(other.name)}!</button>
+      <button class="btn" type="button" id="copyCancel">Huỷ</button>
+    </div>`;
+  $('#copyDlg').showModal();
+}
+function saveCopy() {
+  const { date, meal } = copySrc;
+  const other = otherProfile();
+  const items = meal.items
+    .map((it, i) => ({ name: it.name, qty: parseFloat($(`#copyForm [data-i="${i}"]`).value), unit: itemUnit(it) }))
+    .filter((it) => it.qty > 0);
+  if (!items.length) { alert('Cần ít nhất một món có số lượng lớn hơn 0 nhé!'); return; }
+  const theirs = (((state.diet ||= {})[other.id] ||= {})[date]) || [];
+  if (theirs.some((m) => m.name === meal.name) && !confirm(`${other.name} đã có món “${meal.name}” ngày ${fmtFull(date)}. Vẫn thêm một bản nữa?`)) return;
+  const copy = { id: uid(), name: meal.name, items };
+  if (meal.note) copy.note = meal.note;
+  state.diet[other.id][date] = [...theirs, copy];
+  copySrc = null;
+  $('#copyDlg').close();
+  save(); pow('ĐÃ COPY!');
+}
 function removeMeal(date, id) {
   const data = curDiet();
   data[date] = (data[date] || []).filter((m) => m.id !== id);
@@ -675,17 +710,21 @@ function renderDiet() {
     $('#dtLog').innerHTML = `<div class="empty">${Object.keys(data).length ? 'Không có bữa nào trong khoảng này.' : 'Chưa có bữa nào. Ăn gì log nấy nhé!'}</div>`;
     return;
   }
+  const copyLabel = `⇄ Copy sang ${esc(otherProfile().name)}`;
   const card = (d, m) => `<article class="meal-card" data-date="${d}" data-id="${m.id}">
     <header><h4>${esc(m.name)}</h4><span>
       <button class="icon-btn" data-edit title="Sửa">✏️</button>
       <button class="icon-btn" data-del title="Xoá">🗑️</button></span></header>
     <ul>${m.items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmtNum(itemQty(it))} ${esc(itemUnit(it))}</b></li>`).join('')}</ul>
-    ${m.note ? `<p class="meal-note">📝 ${esc(m.note)}</p>` : ''}</article>`;
+    ${m.note ? `<p class="meal-note">📝 ${esc(m.note)}</p>` : ''}
+    <button class="chip meal-copy" data-copy>${copyLabel}</button></article>`;
   $('#dtLog').innerHTML = dates.map((d) => `<div class="week-block"><h3>${WEEKDAYS[parseISO(d).getDay()]} · ${fmtFull(d)}</h3>
     <div class="meal-grid">${data[d].map((m) => card(d, m)).join('')}</div></div>`).join('');
 }
 function initDietEvents() {
   const form = $('#dietForm');
+  $('#copyForm').addEventListener('submit', (e) => { e.preventDefault(); saveCopy(); });
+  $('#copyForm').addEventListener('click', (e) => { if (e.target.closest('#copyCancel')) $('#copyDlg').close(); });
   $('#dtDate').value = today();
 
   const addItem = (after) => {
@@ -749,12 +788,13 @@ function initDietEvents() {
     renderDiet();
   });
   $('#dtLog').addEventListener('click', (e) => {
-    const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
-    if (!ed && !del) return;
+    const ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]'), cp = e.target.closest('[data-copy]');
+    if (!ed && !del && !cp) return;
     const { date, id } = e.target.closest('.meal-card').dataset;
     const meal = (curDiet()[date] || []).find((m) => m.id === id);
     if (!meal) return;
-    if (ed) {
+    if (cp) openCopyDialog(date, meal);
+    else if (ed) {
       dietEdit = { date, id };
       dietItems = meal.items.map((it) => ({ name: it.name, qty: itemQty(it), unit: itemUnit(it) }));
       $('#dtDate').value = date;

@@ -378,6 +378,23 @@ textarea { display: block; resize: vertical; min-height: 68px; }
 .meal-card li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-weight: 700; border-bottom: 2px dashed var(--grid); }
 .meal-card li span { overflow-wrap: anywhere; }
 .meal-card li b { white-space: nowrap; }
+.meal-copy { display: block; width: 100%; margin-top: 12px; padding: 4px 12px; border-style: dashed; }
+.dlg {
+  width: min(440px, calc(100vw - 24px));
+  max-height: calc(100vh - 40px);
+  padding: 18px 16px;
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  box-shadow: var(--shadow);
+}
+.dlg::backdrop { background: rgba(22, 19, 15, .72); }
+.dlg h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 27px; letter-spacing: 1.4px; }
+.dlg .sub { margin-top: 4px; }
+.copy-list { display: grid; gap: 8px; margin-bottom: 18px; }
+.copy-row { display: grid; grid-template-columns: 1fr 96px minmax(24px, auto); gap: 8px; align-items: center; font-weight: 700; }
+.copy-row span { overflow-wrap: anywhere; }
+.copy-row input { text-align: center; }
 .meal-note { margin: 10px 0 0; font-size: 14px; font-weight: 700; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* ---------- PHOTOS ---------- */

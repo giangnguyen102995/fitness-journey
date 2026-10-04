@@ -159,6 +159,7 @@
           <span>Ghi chú (không bắt buộc)</span>
           <textarea id="dtNote" rows="2" maxlength="300" placeholder="vd: Ăn sau buổi tập, hơi no"></textarea>
         </label>
+        <label class="check"><input type="checkbox" id="dtOut"> Bữa ăn ngoài (gợi ý gia giảm sẽ không chỉnh bữa này)</label>
         <div class="btn-row">
           <button class="btn primary" type="submit" id="dtSubmit">Lưu bữa ăn!</button>
           <button class="btn" type="button" id="dtCancel" hidden>Huỷ sửa</button>
@@ -167,6 +168,31 @@
     </div>
 
     <div class="panel" style="--i:1">
+      <h2 class="caption">Gợi ý gia giảm</h2>
+      <div class="inline-form">
+        <label class="field">
+          <span>Mục tiêu</span>
+          <select id="goalType">
+            <option value="">Chưa chọn</option>
+            <option value="cut">Giảm mỡ</option>
+            <option value="keep">Giữ cân</option>
+            <option value="gain">Tăng cơ</option>
+          </select>
+        </label>
+        <label class="field" id="goalRateField" hidden>
+          <span>Tốc độ mong muốn (kg/tuần)</span>
+          <input type="number" id="goalRate" step="0.05" min="0.05" max="2" inputmode="decimal">
+        </label>
+      </div>
+      <div id="advice"></div>
+      <p class="sub">App so cân trung bình 7 ngày qua với 7 ngày trước đó rồi đối chiếu mục tiêu. Chỉ chỉnh tinh bột và chất béo, mỗi lần 5–10%; đạm và rau giữ nguyên. Đây là gợi ý tham khảo, không thay cho tư vấn của bác sĩ hay chuyên gia dinh dưỡng.</p>
+      <details class="food-groups" id="foodGroups" hidden>
+        <summary>Phân nhóm thực phẩm (sửa nếu app đoán sai)</summary>
+        <div id="foodList"></div>
+      </details>
+    </div>
+
+    <div class="panel" style="--i:2">
       <div class="panel-head">
         <h2 class="caption">Nhật ký ăn uống</h2>
         <div class="chips" id="dtRange">

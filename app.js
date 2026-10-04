@@ -104,13 +104,14 @@ function demoState() {
   const mkMeal = (name, items, note) => ({ id: uid(), name, items: items.map(([n, qty, unit = 'g']) => ({ name: n, qty, unit })), ...(note && { note }) });
   s.diet = {
     p1: {
-      [addDays(today(), -1)]: [mkMeal('Phở bò', [['Bánh phở', 200], ['Thịt bò', 100]], 'Ăn ngoài, số gram ước lượng')],
+      [addDays(today(), -1)]: [{ ...mkMeal('Phở bò', [['Bánh phở', 200], ['Thịt bò', 100]], 'Số gram ước lượng'), out: true }],
       [today()]: [
         mkMeal('Yến mạch chuối trứng', [['Yến mạch', 60], ['Chuối', 1, 'quả'], ['Trứng luộc', 2, 'quả'], ['Sữa tươi không đường', 200]]),
-        mkMeal('Cơm gà áp chảo', [['Ức gà', 150], ['Cơm trắng', 1, 'khẩu phần'], ['Bông cải xanh', 100]], 'Ăn sau buổi tập'),
+        mkMeal('Cơm gà áp chảo', [['Ức gà', 150], ['Cơm trắng', 180], ['Dầu ô liu', 10], ['Bông cải xanh', 100]], 'Ăn sau buổi tập'),
       ],
     },
   };
+  s.goals = { p1: { type: 'cut', rate: 0.6 } };
   return s;
 }
 
@@ -744,11 +745,179 @@ function saveCopy() {
   if (theirs.some((m) => m.name === meal.name) && !confirm(`${other.name} đã có món “${meal.name}” ngày ${fmtFull(date)}. Vẫn thêm một bản nữa?`)) return;
   const copy = { id: uid(), name: meal.name, items };
   if (meal.note) copy.note = meal.note;
+  if (meal.out) copy.out = true;
   state.diet[other.id][date] = [...theirs, copy];
   copySrc = null;
   $('#copyDlg').close();
   save(); pow('ĐÃ COPY!');
 }
+/* gợi ý gia giảm đồ ăn theo xu hướng cân nặng và vòng eo */
+const FOOD_GROUPS = { p: 'Đạm', c: 'Tinh bột', f: 'Béo', v: 'Rau', o: 'Khác' };
+// đoán nhóm theo từ trong tên; xét rau → đạm → béo → tinh bột để "sữa tươi không đường" không bị tính là đường
+const FOOD_WORDS = [
+  ['v', ['rau', 'cải', 'súp lơ', 'xà lách', 'dưa leo', 'dưa chuột', 'cà chua', 'cà rốt', 'salad', 'nấm', 'bí', 'đậu que', 'đậu bắp', 'măng', 'giá', 'mướp', 'ớt chuông']],
+  ['p', ['gà', 'bò', 'heo', 'lợn', 'thịt', 'cá', 'tôm', 'mực', 'trứng', 'đậu hũ', 'đậu phụ', 'tàu hũ', 'sữa', 'whey', 'protein', 'yaourt', 'vịt', 'cua', 'giò', 'chả', 'xúc xích', 'sườn']],
+  ['f', ['dầu', 'bơ', 'mỡ', 'hạt', 'đậu phộng', 'lạc', 'hạnh nhân', 'óc chó', 'phô mai', 'mayonnaise', 'kem', 'socola', 'chocolate']],
+  ['c', ['cơm', 'gạo', 'bún', 'phở', 'mì', 'miến', 'bánh', 'khoai', 'yến mạch', 'ngô', 'bắp', 'xôi', 'cháo', 'nui', 'pasta', 'bột', 'ngũ cốc', 'granola', 'chuối', 'táo', 'cam', 'xoài', 'nho', 'trái cây', 'hoa quả', 'mật ong', 'đường']],
+];
+const foodKey = (name) => name.trim().toLowerCase();
+function foodGroup(name) {
+  const key = foodKey(name);
+  const saved = (state.foods || {})[key];
+  if (saved) return saved;
+  const padded = ` ${key} `;
+  for (const [g, words] of FOOD_WORDS) if (words.some((w) => padded.includes(` ${w} `))) return g;
+  return 'o';
+}
+const curGoal = () => (state.goals || {})[pid()] || null;
+// trung bình cân 7 ngày gần nhất và 7 ngày trước đó
+function weightTrend() {
+  const data = curWeights(), t = today();
+  const avg = (from, to) => {
+    const v = Object.keys(data).filter((d) => d > from && d <= to).map((d) => data[d]);
+    return { n: v.length, avg: v.length ? v.reduce((a, b) => a + b, 0) / v.length : null };
+  };
+  return { now: avg(addDays(t, -7), t), before: avg(addDays(t, -14), addDays(t, -7)) };
+}
+// đổi vòng eo mỗi tuần giữa hai lần đo gần nhất (bỏ qua nếu số đo đã cũ)
+function waistTrend() {
+  const data = curMeasure();
+  const weeks = Object.keys(data).filter((w) => data[w].eo != null && w >= addDays(today(), -28)).sort();
+  if (weeks.length < 2 || weeks[weeks.length - 1] < addDays(today(), -14)) return null;
+  const [a, b] = weeks.slice(-2);
+  return { now: data[b].eo, perWeek: (data[b].eo - data[a].eo) / Math.round((parseISO(b) - parseISO(a)) / 6048e5) };
+}
+// So tốc độ đổi cân thực tế với mục tiêu rồi đề xuất chỉnh lượng tinh bột + béo theo nấc 5%, tối đa 10% mỗi lần.
+// Vòng eo là tín hiệu phụ. pct > 0 là ăn thêm, < 0 là bớt, 0 là giữ nguyên.
+function dietAdvice(goal, trend, waist) {
+  if (!goal) return { need: 'goal' };
+  const { now, before } = trend;
+  if (now.n < 3 || before.n < 3) return { need: 'weights' };
+  const rate = now.avg - before.avg;
+  const target = goal.type === 'cut' ? -goal.rate : goal.type === 'gain' ? goal.rate : 0;
+  const off = rate - target;
+  const TOL = goal.type === 'keep' ? 0.2 : 0.15;
+  const step = Math.abs(off) > 0.4 ? 10 : 5;
+  const res = (pct, why) => ({ rate, target, pct, why });
+  if (goal.type === 'cut') {
+    if (rate < -0.01 * now.avg) return res(rate < -0.015 * now.avg ? 10 : 5, 'Đang xuống nhanh hơn 1% cân nặng mỗi tuần, dễ mất cơ: ăn thêm một chút');
+    if (off > TOL) {
+      if (waist && waist.perWeek <= -0.5) return res(0, 'Cân chưa xuống đủ nhưng eo vẫn giảm, nhiều khả năng đang giảm mỡ mà giữ được cơ: giữ nguyên thêm một tuần');
+      return res(-step, rate > -0.05 ? 'Cân gần như chưa xuống' : 'Cân xuống chậm hơn mục tiêu');
+    }
+    return res(0, off < -TOL ? 'Xuống nhanh hơn mục tiêu một chút nhưng vẫn trong mức an toàn' : 'Đang đúng tốc độ mục tiêu');
+  }
+  if (goal.type === 'gain') {
+    if (off < -TOL) return res(step, rate < 0.05 ? 'Cân gần như chưa lên' : 'Cân lên chậm hơn mục tiêu');
+    if (off > TOL) return res(-step, 'Cân lên nhanh hơn mục tiêu, phần dư dễ thành mỡ');
+    if (waist && waist.perWeek >= 1) return res(-5, 'Cân lên đúng tốc độ nhưng eo tăng nhanh: bớt một chút');
+    return res(0, 'Đang đúng tốc độ mục tiêu');
+  }
+  if (off > TOL) return res(-step, 'Cân đang lên');
+  if (off < -TOL) return res(step, 'Cân đang xuống');
+  return res(0, 'Cân đang ổn định');
+}
+// làm tròn lượng mới về mức cân đong được: 5 g, nửa quả/cái, 1/4 khẩu phần
+function scaleQty(qty, unit, pct) {
+  const v = qty * (1 + pct / 100);
+  if (unit === 'g') return v >= 50 ? Math.round(v / 5) * 5 : Math.round(v);
+  return unit === 'khẩu phần' ? Math.round(v * 4) / 4 : Math.round(v * 2) / 2;
+}
+// áp mức chỉnh vào các món tinh bột/béo của thực đơn 7 ngày qua; bữa ăn ngoài không tính
+function menuChanges(pct) {
+  const data = curDiet(), from = addDays(today(), -7), seen = new Set(), out = [];
+  for (const d of Object.keys(data).filter((x) => x > from).sort()) {
+    for (const m of data[d]) {
+      if (m.out) continue;
+      for (const it of m.items) {
+        const g = foodGroup(it.name), qty = itemQty(it), unit = itemUnit(it);
+        if (g !== 'c' && g !== 'f') continue;
+        const to = scaleQty(qty, unit, pct), key = [m.name, it.name, qty, unit].join('|');
+        if (to === qty || seen.has(key)) continue;
+        seen.add(key);
+        out.push({ meal: m.name, item: it.name, from: qty, to, unit });
+      }
+    }
+  }
+  return out;
+}
+function renderAdvice() {
+  const goal = curGoal();
+  $('#goalType').value = goal ? goal.type : '';
+  $('#goalRateField').hidden = !goal || goal.type === 'keep';
+  if (document.activeElement !== $('#goalRate')) $('#goalRate').value = goal && goal.rate ? goal.rate : '';
+
+  const trend = weightTrend(), waist = waistTrend();
+  const a = dietAdvice(goal, trend, waist);
+  const box = $('#advice');
+  if (a.need === 'goal') box.innerHTML = '<div class="empty">Chọn mục tiêu ở trên để nhận gợi ý.</div>';
+  else if (a.need === 'weights') {
+    box.innerHTML = `<div class="empty">Cần cân ít nhất 3 ngày trong mỗi tuần của 2 tuần gần nhất để tính xu hướng.<br>
+      Hiện có: 7 ngày qua ${trend.now.n} lần, 7 ngày trước đó ${trend.before.n} lần.</div>`;
+  } else {
+    const kg = (v) => `${fmtDelta(Math.round(v * 100) / 100, 2)} kg/tuần`;
+    const facts = `<ul class="facts">
+      <li>Cân trung bình 7 ngày qua <b>${fmtNum(trend.now.avg)} kg</b>, 7 ngày trước đó <b>${fmtNum(trend.before.avg)} kg</b></li>
+      <li>Thực tế <b>${kg(a.rate)}</b> · mục tiêu <b>${kg(a.target)}</b></li>
+      ${waist ? `<li>Eo <b>${fmtNum(waist.now)} cm</b>, ${fmtDelta(Math.round(waist.perWeek * 10) / 10)} cm/tuần</li>` : ''}</ul>`;
+    const until = goal.appliedAt ? addDays(goal.appliedAt, 7) : '';
+    let body;
+    if (until > today()) {
+      body = `<div class="verdict"><b>⏳ Đã chỉnh ngày ${fmtShort(goal.appliedAt)}</b>
+        <span>Ăn theo mức mới đến hết ${fmtShort(addDays(until, -1))} rồi xem lại gợi ý, để cân kịp phản ánh thay đổi.</span></div>
+        <button type="button" class="chip" data-unapply>Bỏ đánh dấu</button>`;
+    } else if (!a.pct) {
+      body = `<div class="verdict"><b>✅ Giữ nguyên thực đơn</b><span>${a.why}.</span></div>`;
+    } else {
+      const amount = `${Math.abs(a.pct)}%`;
+      const list = menuChanges(a.pct);
+      body = `<div class="verdict" data-dir="${a.pct > 0 ? 'up' : 'down'}">
+          <b>${a.pct > 0 ? '⬆️ Tăng' : '⬇️ Giảm'} khoảng ${amount} tinh bột và chất béo</b><span>${a.why}.</span></div>
+        ${list.length ? `<p class="sub">Áp vào thực đơn 7 ngày qua:</p>
+          <ul class="chg-list">${list.map((c) => `<li><span>${esc(c.meal)} · <b>${esc(c.item)}</b></span>
+            <b>${fmtNum(c.from)} → ${fmtNum(c.to)} ${esc(c.unit)}</b></li>`).join('')}</ul>`
+    : `<p class="sub">Chưa thấy món tinh bột hoặc chất béo nào trong thực đơn 7 ngày qua để chỉnh cụ thể. Anh/chị xem lại phần phân nhóm bên dưới, hoặc tự ${a.pct > 0 ? 'thêm' : 'bớt'} khoảng ${amount} phần cơm, bún, bánh, dầu mỡ.</p>`}
+        <button type="button" class="chip big" data-apply>✅ Đã chỉnh thực đơn theo gợi ý</button>`;
+    }
+    box.innerHTML = facts + body;
+  }
+
+  // danh sách thực phẩm đã log gần đây để sửa nhóm khi app đoán sai
+  const names = new Map();
+  const data = curDiet(), from = addDays(today(), -14);
+  for (const d of Object.keys(data).filter((x) => x > from)) for (const m of data[d]) for (const it of m.items) names.set(foodKey(it.name), it.name);
+  $('#foodGroups').hidden = !names.size;
+  $('#foodList').innerHTML = [...names.entries()].sort((x, y) => x[0].localeCompare(y[0], 'vi')).map(([key, name]) => `
+    <label class="food-row"><span>${esc(name)}</span>
+      <select data-food="${esc(key)}">${Object.entries(FOOD_GROUPS).map(([g, label]) => `<option value="${g}"${g === foodGroup(name) ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`).join('');
+}
+function initAdviceEvents() {
+  const setGoal = (g) => { (state.goals ||= {})[pid()] = g; save(); renderAdvice(); };
+  $('#goalType').addEventListener('change', (e) => {
+    const type = e.target.value;
+    if (!type) { delete (state.goals ||= {})[pid()]; save(); renderAdvice(); return; }
+    // tốc độ mặc định: giảm 0,5% cân nặng mỗi tuần, tăng 0,25%
+    const dates = Object.keys(curWeights()).sort();
+    const w = dates.length ? curWeights()[dates[dates.length - 1]] : 70;
+    const rate = type === 'keep' ? 0 : Math.max(0.05, Math.round((w * (type === 'cut' ? 0.005 : 0.0025)) / 0.05) * 0.05);
+    setGoal({ type, rate: Math.round(rate * 100) / 100 });
+  });
+  $('#goalRate').addEventListener('change', (e) => {
+    const v = parseFloat(e.target.value), goal = curGoal();
+    if (goal && v > 0) setGoal({ type: goal.type, rate: v });
+  });
+  $('#advice').addEventListener('click', (e) => {
+    const goal = curGoal();
+    if (e.target.closest('[data-apply]')) { setGoal({ ...goal, appliedAt: today() }); pow('CHỐT!'); }
+    else if (e.target.closest('[data-unapply]')) setGoal({ type: goal.type, rate: goal.rate });
+  });
+  $('#foodList').addEventListener('change', (e) => {
+    if (e.target.dataset.food == null) return;
+    (state.foods ||= {})[e.target.dataset.food] = e.target.value;
+    save(); renderAdvice();
+  });
+}
+
 function removeMeal(date, id) {
   const data = curDiet();
   data[date] = (data[date] || []).filter((m) => m.id !== id);
@@ -758,6 +927,7 @@ function resetDietForm() {
   dietEdit = null;
   dietItems = [{}];
   $('#dtName').value = $('#dtNote').value = '';
+  $('#dtOut').checked = false;
 }
 function renderDietItems() {
   $('#dtItems').innerHTML = dietItems.map((it, i) => `
@@ -770,6 +940,7 @@ function renderDietItems() {
 }
 function renderDiet() {
   renderDietItems();
+  renderAdvice();
   $('#dtSubmit').textContent = dietEdit ? 'Cập nhật bữa ăn!' : 'Lưu bữa ăn!';
   $('#dtCancel').hidden = !dietEdit;
   $$('#dtRange .chip').forEach((c) => c.classList.toggle('active', +c.dataset.range === dietRange));
@@ -783,7 +954,7 @@ function renderDiet() {
   }
   const copyLabel = `⇄ Copy sang ${esc(otherProfile().name)}`;
   const card = (d, m) => `<article class="meal-card" data-date="${d}" data-id="${m.id}">
-    <header><h4>${esc(m.name)}</h4><span>
+    <header><h4>${esc(m.name)}${m.out ? ' <small class="badge">🍜 Ăn ngoài</small>' : ''}</h4><span>
       <button class="icon-btn" data-edit title="Sửa">✏️</button>
       <button class="icon-btn" data-del title="Xoá">🗑️</button></span></header>
     <ul>${m.items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmtNum(itemQty(it))} ${esc(itemUnit(it))}</b></li>`).join('')}</ul>
@@ -794,6 +965,7 @@ function renderDiet() {
 }
 function initDietEvents() {
   const form = $('#dietForm');
+  initAdviceEvents();
   $('#copyForm').addEventListener('submit', (e) => { e.preventDefault(); saveCopy(); });
   $('#copyForm').addEventListener('click', (e) => { if (e.target.closest('#copyCancel')) $('#copyDlg').close(); });
   $('#dtDate').value = today();
@@ -837,6 +1009,7 @@ function initDietEvents() {
     const meal = { id: dietEdit ? dietEdit.id : uid(), name, items: rows.map((it) => ({ name: it.name.trim(), qty: it.qty, unit: itemUnit(it) })) };
     const note = $('#dtNote').value.trim();
     if (note) meal.note = note;
+    if ($('#dtOut').checked) meal.out = true;
 
     const data = curDiet();
     let at = -1;
@@ -870,6 +1043,7 @@ function initDietEvents() {
       dietItems = meal.items.map((it) => ({ name: it.name, qty: itemQty(it), unit: itemUnit(it) }));
       $('#dtDate').value = date;
       $('#dtName').value = meal.name;
+      $('#dtOut').checked = !!meal.out;
       $('#dtNote').value = meal.note || '';
       renderDiet();
       form.scrollIntoView({ behavior: 'smooth', block: 'center' });

@@ -6,7 +6,7 @@
    ở lần đồng bộ gần nhất); mục nào khác snapshot là thay đổi của máy này và sẽ được đẩy lên. */
 
 const SYNC = { snap: 'fj-sync-snapshot', cursor: 'fj-sync-cursor', user: 'fj-sync-user', pending: 'fj-sync-photos-pending' };
-const SYNC_TYPES = ['profiles', 'm', 'w', 'diet', 'prog', 'log', 'photo'];
+const SYNC_TYPES = ['profiles', 'm', 'w', 'diet', 'prog', 'log', 'photo', 'goal', 'foods'];
 const SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
 
 const lsGet = (k, fallback) => { try { return JSON.parse(localStorage.getItem(k)) ?? fallback; } catch (e) { return fallback; } };
@@ -39,6 +39,8 @@ function flattenState(s) {
   each('m', s.measurements);
   each('w', s.weights);
   each('diet', s.diet);
+  for (const p in s.goals || {}) out[`goal|${p}`] = s.goals[p];
+  if (s.foods && Object.keys(s.foods).length) out.foods = s.foods;
   for (const p in s.workouts || {}) {
     for (const prog of s.workouts[p].programs) out[`prog|${p}|${prog.id}`] = prog;
     for (const k in s.workouts[p].logs) out[`log|${p}|${k}`] = s.workouts[p].logs[k];
@@ -54,6 +56,8 @@ function applyRemote(key, value, deleted) {
   } else if (type === 'm') put((state.measurements[p] ||= {}));
   else if (type === 'w') put((state.weights[p] ||= {}));
   else if (type === 'diet') put(((state.diet ||= {})[p] ||= {}));
+  else if (type === 'goal') { if (deleted) delete (state.goals ||= {})[p]; else (state.goals ||= {})[p] = value; }
+  else if (type === 'foods') state.foods = deleted ? {} : value;
   else {
     const w = ((state.workouts ||= {})[p] ||= { programs: [], logs: {}, active: null });
     if (type === 'log') { put(w.logs); return; }

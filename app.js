@@ -101,13 +101,13 @@ function demoState() {
     }
   });
   s.workouts = { p1: { programs: [prog], logs, active: prog.id } };
-  const mkMeal = (name, items, note) => ({ id: uid(), name, items: items.map(([n, g]) => ({ name: n, g })), ...(note && { note }) });
+  const mkMeal = (name, items, note) => ({ id: uid(), name, items: items.map(([n, qty, unit = 'g']) => ({ name: n, qty, unit })), ...(note && { note }) });
   s.diet = {
     p1: {
       [addDays(today(), -1)]: [mkMeal('Phở bò', [['Bánh phở', 200], ['Thịt bò', 100]], 'Ăn ngoài, số gram ước lượng')],
       [today()]: [
-        mkMeal('Yến mạch chuối', [['Yến mạch', 60], ['Chuối', 100], ['Sữa tươi không đường', 200]]),
-        mkMeal('Cơm gà áp chảo', [['Ức gà', 150], ['Cơm trắng', 180], ['Bông cải xanh', 100]], 'Ăn sau buổi tập'),
+        mkMeal('Yến mạch chuối trứng', [['Yến mạch', 60], ['Chuối', 1, 'quả'], ['Trứng luộc', 2, 'quả'], ['Sữa tươi không đường', 200]]),
+        mkMeal('Cơm gà áp chảo', [['Ức gà', 150], ['Cơm trắng', 1, 'khẩu phần'], ['Bông cải xanh', 100]], 'Ăn sau buổi tập'),
       ],
     },
   };
@@ -630,10 +630,14 @@ function initWorkoutEvents() {
 
 /* ---------- diet ---------- */
 const WEEKDAYS = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
-let dietItems = [{}];  // thành phần đang nhập: [{ name, g }]
+const DIET_UNITS = ['g', 'quả', 'cái', 'khẩu phần'];
+let dietItems = [{}];  // thành phần đang nhập: [{ name, qty, unit }]
 let dietEdit = null;   // { date, id } của bữa đang sửa
 let dietRange = 30;
 const curDiet = () => ((state.diet ||= {})[pid()] ||= {});
+// bữa lưu trước khi có đơn vị chỉ có số gram ở trường g
+const itemQty = (it) => it.qty ?? it.g;
+const itemUnit = (it) => it.unit || 'g';
 function removeMeal(date, id) {
   const data = curDiet();
   data[date] = (data[date] || []).filter((m) => m.id !== id);
@@ -648,8 +652,8 @@ function renderDietItems() {
   $('#dtItems').innerHTML = dietItems.map((it, i) => `
     <div class="item-row">
       <input type="text" data-item="${i}" data-f="name" maxlength="40" placeholder="Đồ gì (vd: Ức gà)" value="${esc(it.name ?? '')}">
-      <input type="number" data-item="${i}" data-f="g" step="0.1" min="0" max="10000" inputmode="decimal" placeholder="Số gram" value="${it.g ?? ''}">
-      <b>g</b>
+      <input type="number" data-item="${i}" data-f="qty" step="0.1" min="0" max="10000" inputmode="decimal" placeholder="Số lượng" value="${it.qty ?? ''}">
+      <select data-item="${i}" data-f="unit" aria-label="Đơn vị">${DIET_UNITS.map((u) => `<option${u === itemUnit(it) ? ' selected' : ''}>${u}</option>`).join('')}</select>
       <button type="button" class="icon-btn" data-rmitem="${i}" title="Bỏ dòng này">✕</button>
     </div>`).join('');
 }
@@ -670,7 +674,7 @@ function renderDiet() {
     <header><h4>${esc(m.name)}</h4><span>
       <button class="icon-btn" data-edit title="Sửa">✏️</button>
       <button class="icon-btn" data-del title="Xoá">🗑️</button></span></header>
-    <ul>${m.items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmtNum(it.g)} g</b></li>`).join('')}</ul>
+    <ul>${m.items.map((it) => `<li><span>${esc(it.name)}</span><b>${fmtNum(itemQty(it))} ${esc(itemUnit(it))}</b></li>`).join('')}</ul>
     ${m.note ? `<p class="meal-note">📝 ${esc(m.note)}</p>` : ''}</article>`;
   $('#dtLog').innerHTML = dates.map((d) => `<div class="week-block"><h3>${WEEKDAYS[parseISO(d).getDay()]} · ${fmtFull(d)}</h3>
     <div class="meal-grid">${data[d].map((m) => card(d, m)).join('')}</div></div>`).join('');
@@ -690,7 +694,8 @@ function initDietEvents() {
     if (t.dataset.item == null) return;
     const it = dietItems[+t.dataset.item];
     if (t.dataset.f === 'name') it.name = t.value;
-    else { const v = parseFloat(t.value); it.g = isNaN(v) ? undefined : v; }
+    else if (t.dataset.f === 'unit') it.unit = t.value;
+    else { const v = parseFloat(t.value); it.qty = isNaN(v) ? undefined : v; }
   });
   form.addEventListener('click', (e) => {
     let el;
@@ -711,10 +716,10 @@ function initDietEvents() {
     const date = $('#dtDate').value;
     const name = $('#dtName').value.trim();
     if (!name) { alert('Nhập tên món ăn đã nhé!'); $('#dtName').focus(); return; }
-    const rows = dietItems.filter((it) => (it.name || '').trim() || it.g != null);
-    if (!rows.length) { alert('Thêm ít nhất một thành phần (đồ gì + số gram) nhé!'); return; }
-    if (rows.some((it) => !(it.name || '').trim() || !(it.g > 0))) { alert('Mỗi thành phần cần đủ tên và số gram nhé!'); return; }
-    const meal = { id: dietEdit ? dietEdit.id : uid(), name, items: rows.map((it) => ({ name: it.name.trim(), g: it.g })) };
+    const rows = dietItems.filter((it) => (it.name || '').trim() || it.qty != null);
+    if (!rows.length) { alert('Thêm ít nhất một thành phần (đồ gì + số lượng) nhé!'); return; }
+    if (rows.some((it) => !(it.name || '').trim() || !(it.qty > 0))) { alert('Mỗi thành phần cần đủ tên và số lượng nhé!'); return; }
+    const meal = { id: dietEdit ? dietEdit.id : uid(), name, items: rows.map((it) => ({ name: it.name.trim(), qty: it.qty, unit: itemUnit(it) })) };
     const note = $('#dtNote').value.trim();
     if (note) meal.note = note;
 
@@ -746,7 +751,7 @@ function initDietEvents() {
     if (!meal) return;
     if (ed) {
       dietEdit = { date, id };
-      dietItems = meal.items.map((it) => ({ ...it }));
+      dietItems = meal.items.map((it) => ({ name: it.name, qty: itemQty(it), unit: itemUnit(it) }));
       $('#dtDate').value = date;
       $('#dtName').value = meal.name;
       $('#dtNote').value = meal.note || '';

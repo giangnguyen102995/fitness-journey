@@ -353,7 +353,14 @@ textarea { display: block; resize: vertical; min-height: 68px; }
 .item-list { display: grid; gap: 8px; max-width: 520px; margin: 4px 0 10px; }
 .item-row { display: flex; gap: 8px; align-items: center; }
 .item-row input[type="text"] { flex: 1; min-width: 0; }
-.item-row input[type="number"] { flex: 0 0 110px; text-align: center; }
+.item-row input[type="number"] { flex: 0 0 96px; text-align: center; }
+.item-row select { flex: none; width: auto; }
+@media (max-width: 560px) {
+  .item-list { gap: 14px; }
+  .item-row { flex-wrap: wrap; }
+  .item-row input[type="text"] { flex: 1 0 100%; }
+  .item-row input[type="number"] { flex: 1 1 80px; }
+}
 .item-row .icon-btn { flex: none; }
 .note-field { max-width: 520px; margin: 16px 0 18px; }
 .meal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; }

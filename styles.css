@@ -345,11 +345,20 @@ td .v { font-weight: 800; }
 .day-card ol { margin: 0 0 10px; padding-left: 24px; display: grid; gap: 6px; font-weight: 800; }
 .day-card li > div { display: flex; gap: 6px; align-items: center; }
 .day-card li input { padding: 5px 8px; }
+.day-card li > .ex-goal { flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; font-size: 13px; color: var(--muted); }
+.ex-goal .grp { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.day-card li > .ex-goal input { width: 54px; min-height: 34px; padding: 2px 4px; font-size: 16px; text-align: center; }
+.day-card li > .ex-goal input[data-g="inc"] { width: 78px; }
 .day-card .icon-btn { flex: none; }
 .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
 
 .wk-table input { width: 96px; padding: 6px; text-align: center; }
 .wk-table td:first-child { white-space: normal; min-width: 130px; }
+.wk-table td.ex-name:has(.next) { min-width: 220px; }
+.next { margin-top: 2px; font-family: var(--body); font-size: 14px; font-weight: 700; letter-spacing: 0; line-height: 1.5; }
+.next b { font-size: 16px; font-weight: 800; }
+.next .chip { margin-left: 6px; padding: 1px 12px; }
+.next small { display: block; font-size: 12.5px; color: var(--muted); }
 .setno { font-size: 13px; color: var(--muted); }
 .addset-row { display: none; }
 .sets { line-height: 1.5; }

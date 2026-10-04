@@ -367,6 +367,53 @@ function dayLogs(prog, day) {
 const topSet = (sets) => (sets || []).filter((s) => s.w != null).reduce((a, b) => (!a || b.w > a.w ? b : a), null);
 const setText = (s) => `${s.w != null ? `${fmtNum(s.w, 3)} kg` : '—'}${s.reps != null ? ` × ${s.reps}` : ''}${s.rpe != null ? ` @${fmtNum(s.rpe)}` : ''}`;
 
+/* gợi ý buổi tới (progressive overload) */
+const DEFAULT_REPS = [8, 12];
+// tóm tắt một buổi của một bài: mức tạ nặng nhất, và trong các set ở mức đó thì số reps thấp nhất, RPE cao nhất
+function sessionSummary(sets) {
+  const done = (sets || []).filter((s) => s.w != null && s.reps != null);
+  if (!done.length) return null;
+  const w = Math.max(...done.map((s) => s.w));
+  const top = done.filter((s) => s.w === w);
+  const rpes = top.map((s) => s.rpe).filter((v) => v != null);
+  return { w, reps: Math.min(...top.map((s) => s.reps)), rpe: rpes.length ? Math.max(...rpes) : null, sets: top.length };
+}
+// "Double progression": giữ tạ và thêm rep cho tới trần của khoảng reps, đủ trần ở mọi set thì tăng tạ và quay về sàn.
+// RPE quyết định nhanh hay chậm. logs: các buổi trước ngày đang nhập, cũ → mới.
+function suggestNext(x, logs) {
+  const hist = logs.map((l) => sessionSummary(l.entries[x.id])).filter(Boolean);
+  if (!hist.length) return null;
+  const last = hist[hist.length - 1];
+  const { w, reps, rpe } = last;
+  const lo = x.lo || DEFAULT_REPS[0], hi = Math.max(x.hi || DEFAULT_REPS[1], lo);
+  // bước tăng tạ: theo cài đặt của bài; không có thì lấy lần đổi tạ nhỏ nhất từng ghi
+  const gaps = [...new Set(hist.map((s) => s.w))].sort((a, b) => a - b).map((v, i, all) => v - all[i - 1]).filter((g) => g >= 0.25);
+  const inc = x.inc || (gaps.length ? Math.min(...gaps) : w >= 20 ? 2.5 : 1);
+  const out = (nw, nr, why) => ({ w: Math.round(nw * 1000) / 1000, reps: nr, sets: last.sets, why });
+  const atRpe = rpe != null ? ` ở RPE ${fmtNum(rpe)}` : '';
+
+  const recent = hist.slice(-3);
+  if (recent.length === 3 && recent.every((s) => s.w === w) && reps <= recent[0].reps && reps < hi && rpe != null && rpe >= 9) {
+    return out(Math.max(inc, Math.round((w * 0.9) / inc) * inc), Math.max(lo, reps),
+      `3 buổi liền chưa thêm được rep ở ${fmtNum(w, 3)} kg: lùi khoảng 10% rồi lên lại`);
+  }
+  if (rpe != null && rpe >= 9.5) {
+    if (reps < lo && w > inc) return out(w - inc, lo, `chưa tới ${lo} reps mà đã RPE ${fmtNum(rpe)}: giảm tạ để về lại khoảng ${lo}–${hi} reps`);
+    return out(w, reps, `RPE ${fmtNum(rpe)} là sát giới hạn: giữ nguyên, làm lại cho chắc`);
+  }
+  if (reps >= hi) {
+    return out(w + inc * (rpe != null && rpe <= 6 ? 2 : 1), lo, `mọi set đã đủ ${hi} reps${atRpe}: tăng tạ, quay về ${lo} reps`);
+  }
+  const was = last.sets > 1 ? `set thấp nhất buổi trước được ${reps} reps` : `buổi trước được ${reps} reps`;
+  return out(w, Math.min(hi, reps + (rpe != null && rpe <= 7 ? 2 : 1)), `${was}${atRpe}: giữ tạ, thêm rep cho tới ${hi} rồi mới tăng`);
+}
+function nextHTML(x, logs) {
+  const s = suggestNext(x, logs);
+  if (!s) return '';
+  return `<div class="next">🎯 <b>${fmtNum(s.w, 3)} kg × ${s.reps}</b>${s.sets > 1 ? ` × ${s.sets} set` : ''}
+    <button type="button" class="chip" data-fill="${x.id}">Điền</button><small>${esc(s.why)}</small></div>`;
+}
+
 function renderEditor() {
   const el = $('#wkEditor');
   el.hidden = !draft;
@@ -384,7 +431,14 @@ function renderEditor() {
         <input type="text" class="day-name" maxlength="30" placeholder="Tên ngày ${i + 1} (vd: Push)" value="${esc(d.name)}">
         <ol>${d.exercises.map((x, j) => `<li><div>
           <input type="text" class="ex-name" data-ex="${j}" maxlength="40" placeholder="Tên bài tập" value="${esc(x.name)}">
-          <button type="button" class="icon-btn" data-rmex="${j}" title="Bỏ bài này">✕</button></div></li>`).join('')}</ol>
+          <button type="button" class="icon-btn" data-rmex="${j}" title="Bỏ bài này">✕</button></div>
+          <div class="ex-goal"><span class="grp">Reps
+            <input type="number" data-ex="${j}" data-g="lo" min="1" max="100" step="1" inputmode="numeric" placeholder="${DEFAULT_REPS[0]}" value="${x.lo ?? ''}" aria-label="Reps tối thiểu">
+            –
+            <input type="number" data-ex="${j}" data-g="hi" min="1" max="100" step="1" inputmode="numeric" placeholder="${DEFAULT_REPS[1]}" value="${x.hi ?? ''}" aria-label="Reps tối đa"></span>
+            <span class="grp">Mỗi lần tăng
+            <input type="number" data-ex="${j}" data-g="inc" min="0" max="100" step="0.001" inputmode="decimal" placeholder="tự tính" value="${x.inc ?? ''}" aria-label="Bước tăng tạ">
+            kg</span></div></li>`).join('')}</ol>
         <button type="button" class="chip" data-addex>＋ Thêm bài</button>
       </div>`).join('')}</div>
     <div class="btn-row">
@@ -401,7 +455,13 @@ function saveProgram() {
     days: draft.days.map((d, i) => ({
       id: d.id,
       name: d.name.trim() || `Ngày ${i + 1}`,
-      exercises: d.exercises.filter((x) => x.name.trim()).map((x) => ({ id: x.id, name: x.name.trim() })),
+      exercises: d.exercises.filter((x) => x.name.trim()).map((x) => {
+        const goal = {};
+        if (x.lo) goal.lo = x.lo;
+        if (x.hi) goal.hi = Math.max(x.hi, x.lo || 1);
+        if (x.inc) goal.inc = x.inc;
+        return { id: x.id, name: x.name.trim(), ...goal };
+      }),
     })),
   };
   if (!prog.days.some((d) => d.exercises.length)) { alert('Thêm ít nhất một bài tập nhé!'); return; }
@@ -429,14 +489,15 @@ function renderLogRows(prog, day) {
     return;
   }
   const date = $('#wkDate').value || today();
-  const prev = dayLogs(prog, day).filter((l) => l.date < date).pop();
+  const before = dayLogs(prog, day).filter((l) => l.date < date);
+  const prev = before[before.length - 1];
   const LABELS = { w: 'kg', reps: 'reps', rpe: 'RPE' };
   const cell = (x, i, f, s, p, attrs) => `<td data-label="${LABELS[f]}"><input type="number" data-ex="${x.id}" data-set="${i}" data-f="${f}" ${attrs}
     value="${s[f] ?? ''}" placeholder="${p[f] ?? '—'}"></td>`;
   // trên điện thoại mỗi bài thành một thẻ: dòng .addset-row thay cho nút "＋ set" ở cột cuối
   const rows = day.exercises.map((x) => logDraft[x.id].map((s, i) => {
     const p = (prev && prev.entries[x.id] && prev.entries[x.id][i]) || {};
-    return `<tr${i ? '' : ' class="ex-first"'}><td class="ex-name">${i ? `<span class="setno">↳ set ${i + 1}</span>` : esc(x.name)}</td>
+    return `<tr${i ? '' : ' class="ex-first"'}><td class="ex-name">${i ? `<span class="setno">↳ set ${i + 1}</span>` : esc(x.name) + nextHTML(x, before)}</td>
       ${cell(x, i, 'w', s, p, 'step="0.001" min="0" max="1000" inputmode="decimal"')}
       ${cell(x, i, 'reps', s, p, 'step="1" min="0" max="999" inputmode="numeric"')}
       ${cell(x, i, 'rpe', s, p, 'step="0.5" min="1" max="10" inputmode="decimal"')}
@@ -549,6 +610,12 @@ function initWorkoutEvents() {
       const sets = logDraft[el.dataset.addset];
       sets.push({ ...sets[sets.length - 1] });
       renderLogRows(prog, day);
+    } else if ((el = t.closest('[data-fill]'))) {
+      const x = day.exercises.find((e2) => e2.id === el.dataset.fill);
+      const s = suggestNext(x, dayLogs(prog, day).filter((l) => l.date < ($('#wkDate').value || today())));
+      if (!s) return;
+      logDraft[x.id] = Array.from({ length: s.sets }, () => ({ w: s.w, reps: s.reps }));
+      renderLogRows(prog, day);
     } else if ((el = t.closest('[data-rmset]'))) {
       const [ex, i] = el.dataset.rmset.split('|');
       logDraft[ex].splice(+i, 1);
@@ -563,6 +630,10 @@ function initWorkoutEvents() {
     if (t.id === 'pgName') draft.name = t.value;
     else if (t.classList.contains('day-name')) dayOf(t).name = t.value;
     else if (t.classList.contains('ex-name')) dayOf(t).exercises[+t.dataset.ex].name = t.value;
+    else if (t.dataset.g) {
+      const v = parseFloat(t.value);
+      dayOf(t).exercises[+t.dataset.ex][t.dataset.g] = v > 0 ? v : undefined;
+    }
   });
   editor.addEventListener('change', (e) => {
     if (e.target.id !== 'pgDays') return;
